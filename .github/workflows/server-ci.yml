@@ -11,6 +11,7 @@ on:
       - master
       - release-*
   pull_request:
+    branches-ignore: [codex/mattermost-11.10.1]
     paths:
       - "server/**"
       - ".github/workflows/server-ci.yml"

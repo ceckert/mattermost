@@ -11,6 +11,11 @@ on:
       - master
       - release-*
   pull_request:
+    # This fork carries patch branches under codex/**. Upstream Server CI needs
+    # Docker Hub credentials the fork does not have, so it fails at docker login
+    # and drags every dependent job red. Leave it to upstream.
+    branches-ignore:
+      - 'codex/**'
 
 concurrency:
   group: ${{ github.event_name == 'pull_request' && format('{0}-{1}', github.workflow, github.ref) || github.run_id }}

@@ -10,6 +10,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -23,6 +24,7 @@ import (
 )
 
 func TestPostStore(t *testing.T, rctx request.CTX, ss store.Store, s SqlStore) {
+	t.Run("ConcurrentThreadReplies", func(t *testing.T) { testConcurrentThreadReplies(t, rctx, ss) })
 	t.Run("SaveMultiple", func(t *testing.T) { testPostStoreSaveMultiple(t, rctx, ss) })
 	t.Run("Save", func(t *testing.T) { testPostStoreSave(t, rctx, ss) })
 	t.Run("SaveAndUpdateChannelMsgCounts", func(t *testing.T) { testPostStoreSaveChannelMsgCounts(t, rctx, ss) })
@@ -285,6 +287,56 @@ func testPostStoreSave(t *testing.T, rctx request.CTX, ss store.Store) {
 		assert.Equal(t, true, *pp.RequestedAck)
 		assert.Equal(t, false, *pp.PersistentNotifications)
 	})
+}
+
+func testConcurrentThreadReplies(t *testing.T, rctx request.CTX, ss store.Store) {
+	for _, rootCount := range []int{1, 2} {
+		t.Run(fmt.Sprintf("roots=%d", rootCount), func(t *testing.T) {
+			channel, err := ss.Channel().Save(rctx, &model.Channel{TeamId: model.NewId(), DisplayName: "Concurrent replies", Name: model.NewId(), Type: model.ChannelTypeOpen}, -1)
+			require.NoError(t, err)
+			roots := make([]*model.Post, rootCount)
+			for i := range roots {
+				roots[i], err = ss.Post().Save(rctx, &model.Post{ChannelId: channel.Id, UserId: model.NewId(), Message: "Root"})
+				require.NoError(t, err)
+			}
+			const writers = 16
+			participants := make(model.StringArray, writers)
+			for i := range participants {
+				participants[i] = model.NewId()
+			}
+			for wave := range 2 {
+				start := make(chan struct{})
+				failures := make(chan error, writers)
+				var done sync.WaitGroup
+				for i := range writers {
+					done.Add(1)
+					go func() {
+						defer done.Done()
+						replies := make([]*model.Post, rootCount)
+						for j := range roots {
+							root := roots[(j+i)%rootCount]
+							replies[j] = &model.Post{ChannelId: channel.Id, RootId: root.Id, UserId: participants[i], Message: "Reply"}
+						}
+						<-start
+						_, _, err := ss.Post().SaveMultiple(rctx, replies)
+						failures <- err
+					}()
+				}
+				close(start)
+				done.Wait()
+				close(failures)
+				for err := range failures {
+					require.NoError(t, err)
+				}
+				for _, root := range roots {
+					thread, err := ss.Thread().Get(root.Id)
+					require.NoError(t, err)
+					require.Equal(t, int64((wave+1)*writers), thread.ReplyCount)
+					require.ElementsMatch(t, participants, thread.Participants)
+				}
+			}
+		})
+	}
 }
 
 func testPostStoreSaveMultiple(t *testing.T, rctx request.CTX, ss store.Store) {

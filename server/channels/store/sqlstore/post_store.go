@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -3161,6 +3162,16 @@ func (s *SqlPostStore) updateThreadsFromPosts(transaction *sqlxTxWrapper, posts 
 	rootIds := make([]string, 0, len(postsByRoot))
 	for rootId := range postsByRoot {
 		rootIds = append(rootIds, rootId)
+	}
+
+	slices.Sort(rootIds)
+	for _, idChunk := range chunkSlice(rootIds, 1, s.SqlStore.getMaxInsertParams()) {
+		query := s.getQueryBuilder().Select("Id").From("Posts").
+			Where(sq.Eq{"Id": idChunk}).OrderBy("Id").Suffix("FOR NO KEY UPDATE")
+		var lockedRoots []string
+		if err := transaction.SelectBuilder(&lockedRoots, query); err != nil {
+			return err
+		}
 	}
 
 	// Query existing threads in chunks to stay under the parameter limit.

@@ -2,7 +2,7 @@ name: Thread post regression
 
 on:
   pull_request:
-    branches: [codex/mattermost-11.11.1]
+    branches: [codex/mattermost-12.0.1]
   workflow_dispatch:
 
 permissions:

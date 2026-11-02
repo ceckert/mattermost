@@ -79,7 +79,7 @@ require (
 	github.com/yuin/goldmark v1.8.5
 	golang.org/x/crypto v0.57.0
 	golang.org/x/image v0.45.0
-	golang.org/x/net v0.58.0
+	golang.org/x/net v0.60.0
 	golang.org/x/sync v0.23.0
 	golang.org/x/sys v0.48.0
 	golang.org/x/term v0.46.0
